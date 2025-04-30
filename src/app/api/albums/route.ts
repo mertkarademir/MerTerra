@@ -3,25 +3,17 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-type SessionUser = {
-  id: string;
-  name?: string | null;
-  email?: string | null;
-  role: string;
-};
-
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as SessionUser;
-
     const albums = await prisma.album.findMany({
       where: {
-        userId: user.id,
+        userId: session.user.id,
       },
       orderBy: {
         createdAt: "desc",
@@ -45,13 +37,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as SessionUser;
-    const body = await req.json();
-    const { title, description } = body;
+    const { title, description } = await req.json();
 
     if (!title) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
@@ -61,7 +52,7 @@ export async function POST(req: NextRequest) {
       data: {
         title,
         description,
-        userId: user.id,
+        userId: session.user.id,
       },
     });
 
@@ -75,11 +66,11 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as SessionUser;
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
@@ -95,7 +86,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Album not found" }, { status: 404 });
     }
 
-    if (album.userId !== user.id) {
+    if (album.userId !== session.user.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -105,23 +96,32 @@ export async function DELETE(req: NextRequest) {
     });
 
     for (const photo of photos) {
-      const cloudinaryResponse = await fetch(
-        `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/image/destroy`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            public_id: photo.cloudinaryId,
-            api_key: process.env.CLOUDINARY_API_KEY,
-            api_secret: process.env.CLOUDINARY_API_SECRET,
-            timestamp: Math.floor(Date.now() / 1000),
-          }),
-        }
-      );
+      try {
+        const cloudinaryResponse = await fetch(
+          `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/image/destroy`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              public_id: photo.cloudinaryId,
+              api_key: process.env.CLOUDINARY_API_KEY,
+              api_secret: process.env.CLOUDINARY_API_SECRET,
+              timestamp: Math.floor(Date.now() / 1000),
+            }),
+          }
+        );
 
-      if (!cloudinaryResponse.ok) {
+        if (!cloudinaryResponse.ok) {
+          console.error("[CLOUDINARY_DELETE]", await cloudinaryResponse.text());
+          return NextResponse.json(
+            { error: "Failed to delete from Cloudinary" },
+            { status: 500 }
+          );
+        }
+      } catch (error) {
+        console.error("[CLOUDINARY_DELETE]", error);
         return NextResponse.json(
           { error: "Failed to delete from Cloudinary" },
           { status: 500 }
@@ -134,7 +134,7 @@ export async function DELETE(req: NextRequest) {
       where: { id },
     });
 
-    return new NextResponse(null, { status: 204 });
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
     console.error("[ALBUMS_DELETE]", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
