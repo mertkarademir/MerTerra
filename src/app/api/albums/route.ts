@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -10,11 +10,11 @@ type SessionUser = {
   role: string;
 };
 
-export async function GET(request: Request) {
+export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const user = session.user as SessionUser;
@@ -38,22 +38,24 @@ export async function GET(request: Request) {
     return NextResponse.json(albums);
   } catch (error) {
     console.error("[ALBUMS_GET]", error);
-    return new NextResponse("Internal error", { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-
     if (!session?.user) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const user = session.user as SessionUser;
-
-    const body = await request.json();
+    const body = await req.json();
     const { title, description } = body;
+
+    if (!title) {
+      return NextResponse.json({ error: "Title is required" }, { status: 400 });
+    }
 
     const album = await prisma.album.create({
       data: {
@@ -65,26 +67,24 @@ export async function POST(request: Request) {
 
     return NextResponse.json(album);
   } catch (error) {
-    console.error("Error creating album:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    console.error("[ALBUMS_POST]", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
-export async function DELETE(request: Request) {
+export async function DELETE(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-
     if (!session?.user) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const user = session.user as SessionUser;
-
-    const { searchParams } = new URL(request.url);
+    const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return new NextResponse("Album ID is required", { status: 400 });
+      return NextResponse.json({ error: "Album ID is required" }, { status: 400 });
     }
 
     const album = await prisma.album.findUnique({
@@ -92,11 +92,11 @@ export async function DELETE(request: Request) {
     });
 
     if (!album) {
-      return new NextResponse("Album not found", { status: 404 });
+      return NextResponse.json({ error: "Album not found" }, { status: 404 });
     }
 
     if (album.userId !== user.id) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Delete all photos in the album from Cloudinary
@@ -122,7 +122,10 @@ export async function DELETE(request: Request) {
       );
 
       if (!cloudinaryResponse.ok) {
-        throw new Error("Failed to delete from Cloudinary");
+        return NextResponse.json(
+          { error: "Failed to delete from Cloudinary" },
+          { status: 500 }
+        );
       }
     }
 
@@ -133,7 +136,7 @@ export async function DELETE(request: Request) {
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    console.error("Error deleting album:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    console.error("[ALBUMS_DELETE]", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 } 
