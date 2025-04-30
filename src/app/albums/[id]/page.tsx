@@ -17,11 +17,11 @@ type Album = {
   photos: Photo[];
 };
 
-type Props = {
+export default async function AlbumPage({
+  params,
+}: {
   params: { id: string };
-};
-
-export default async function AlbumPage({ params }: Props) {
+}) {
   const album = await prisma.album.findUnique({
     where: { id: params.id },
     include: {
