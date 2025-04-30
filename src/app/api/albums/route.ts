@@ -10,6 +10,38 @@ type SessionUser = {
   role: string;
 };
 
+export async function GET(request: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+
+    const user = session.user as SessionUser;
+
+    const albums = await prisma.album.findMany({
+      where: {
+        userId: user.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        _count: {
+          select: {
+            photos: true,
+          },
+        },
+      },
+    });
+
+    return NextResponse.json(albums);
+  } catch (error) {
+    console.error("[ALBUMS_GET]", error);
+    return new NextResponse("Internal error", { status: 500 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
