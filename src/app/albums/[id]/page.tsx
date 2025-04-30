@@ -18,9 +18,7 @@ type Album = {
 };
 
 type Props = {
-  params: {
-    id: string;
-  };
+  params: { id: string };
 };
 
 export default async function AlbumPage({ params }: Props) {
