@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type SessionUser = {
@@ -10,16 +10,19 @@ type SessionUser = {
   role: string;
 };
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-
     if (!session?.user) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const body = await request.json();
-    const { title, description, url, cloudinaryId, albumId } = body;
+    const user = session.user as SessionUser;
+    const { title, description, url, cloudinaryId, albumId } = await req.json();
+
+    if (!title || !url || !cloudinaryId || !albumId) {
+      return new NextResponse("Missing required fields", { status: 400 });
+    }
 
     const photo = await prisma.photo.create({
       data: {
@@ -28,13 +31,39 @@ export async function POST(request: Request) {
         url,
         cloudinaryId,
         albumId,
+        userId: user.id,
       },
     });
 
     return NextResponse.json(photo);
   } catch (error) {
-    console.error("Error creating photo:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    console.error("[PHOTOS_POST]", error);
+    return new NextResponse("Internal error", { status: 500 });
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const albumId = searchParams.get("albumId");
+
+    if (!albumId) {
+      return new NextResponse("Album ID is required", { status: 400 });
+    }
+
+    const photos = await prisma.photo.findMany({
+      where: {
+        albumId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return NextResponse.json(photos);
+  } catch (error) {
+    console.error("[PHOTOS_GET]", error);
+    return new NextResponse("Internal error", { status: 500 });
   }
 }
 

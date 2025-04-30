@@ -17,7 +17,7 @@ type Album = {
   photos: Photo[];
 };
 
-export default async function AlbumPage({
+export default async function Page({
   params,
 }: {
   params: { id: string };
